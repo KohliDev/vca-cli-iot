@@ -112,6 +112,9 @@ CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
 
 DISK_SIZE = 1000000000
 
+vm_ip_iot = []
+
+public_ip_iot = []
 
 def _load_context(ctx, profile, json_output, xml_output, insecure):
     config = ConfigParser.RawConfigParser()
@@ -576,6 +579,80 @@ def vdc(ctx, operation, vdc):
         print_error("Unable to select vdc '%s' in profile '%s'"
                     % (vdc, ctx.obj['profile']), ctx)
 
+def createvm(ctx,this_vapp,this_catalog,this_template,this_network,this_mode,this_name):
+	ctx.invoke(vapp, operation="create", vdc=ctx.obj['vdc'], vapp = this_vapp, catalog = this_catalog, template = this_template, network = this_network, mode = this_mode, vm_name = this_name)
+        ctx.invoke(vapp, operation="power.on", vdc=ctx.obj['vdc'], vapp="ubuntu")
+
+def undeploy(ctx,vapp):
+	vca = _getVCA_vcloud_session(ctx)
+	vdc = ctx.obj['vdc']
+	print_message("undeploying vApp '%s' from VDC '%s'" % (vapp, vdc), ctx)
+        the_vdc = vca.get_vdc(vdc)
+        the_vapp = vca.get_vapp(the_vdc, vapp)
+        task = the_vapp.undeploy()
+        if task:
+            display_progress(task, ctx,
+                             vca.vcloud_session.get_vcloud_headers())
+        else:
+            ctx.obj['response'] = the_vapp.response
+            print_error("can't undeploy vApp", ctx)
+	
+
+def setup_cluster(ctx,cust_file,vm_name,vapp):
+	vca = _getVCA_vcloud_session(ctx)
+	vdc = ctx.obj['vdc']
+	print("customizing VM '%s'"
+              "in vApp '%s' in VDC '%s'" % (vm_name, vapp, vdc))
+        the_vdc = vca.get_vdc(vdc)
+        the_vapp = vca.get_vapp(the_vdc, vapp)
+	print cust_file
+        if the_vdc and the_vapp and cust_file:
+            print_message("uploading customization script", ctx)
+            task = the_vapp.customize_guest_os(vm_name, cust_file.read())
+            if task:
+                display_progress(task, ctx,
+                                 vca.vcloud_session.get_vcloud_headers())
+                print_message("deploying and starting the vApp", ctx)
+                task = the_vapp.force_customization(vm_name)
+                if task:
+                    display_progress(task, ctx,
+                                     vca.vcloud_session.get_vcloud_headers())
+                else:
+                    ctx.obj['response'] = the_vapp.response
+                    print_error("can't customize vApp", ctx)
+            else:
+                ctx.obj['response'] = the_vapp.response
+                print_error("can't customize vApp", ctx)
+
+@cli.command()
+@click.pass_context
+@click.argument('operation', default=default_operation, metavar='[up | down | createpod | destroy]', type=click.Choice(['up','down','createpod','destroy']))
+@click.option('-v', '--vdc', default='', metavar='<vdc>', help='Virtual Data Center Name')
+@click.option('-a', '--vapp', 'vapp', default='ubuntu', metavar='<vapp>', help='vApp name')
+@click.option('-c', '--catalog', default='Public Catalog', metavar='<catalog>', help='Catalog name')
+@click.option('-t', '--template', default='Ubuntu Server 12.04 LTS (amd64 20150127)', metavar='<template>', help='Template name')
+@click.option('-n', '--network', default='default-routed-network', metavar='<network>', help='Network name')
+@click.option('-m', '--mode', default='POOL', metavar='[pool, dhcp, manual]', help='Network connection mode', type=click.Choice(['POOL', 'pool', 'DHCP', 'dhcp', 'MANUAL', 'manual']))
+@click.option('-N', '--vm_name', default='ubuntu', metavar='<name>', help='VM name')
+@click.option('-f', '--file', 'cust_file', default='~/vca-cli/files/kube_config.sh', metavar='<customization_file>', help='Guest OS Customization script file', type=click.File('r'))
+def kubectl(ctx, operation,vdc,vapp,catalog,template,network,mode,vm_name,cust_file):
+	if operation == 'up':
+		print_message('Execute code for kubernetes up',ctx)
+		createvm(ctx, vapp, catalog, template, network, mode, vm_name)
+		ctx.invoke(gateway, operation="add-ip", gateway="gateway")
+		ctx.invoke(gateway, operation="list")
+		ctx.invoke(nat, operation="add", rule_type="SNAT", original_ip=vm_ip_iot[0], translated_ip=public_ip_iot[len(public_ip_iot)-1])
+		ctx.invoke(nat, operation="add", rule_type="DNAT", original_ip=public_ip_iot[len(public_ip_iot)-1], translated_ip=vm_ip_iot[0])
+		ctx.invoke(firewall, operation="disable")
+		undeploy(ctx,vapp)
+		setup_cluster(ctx,cust_file,vm_name,vapp)
+		print "The Kubernetes is deployed and can be accessed at",public_ip_iot[len(public_ip_iot)-1]
+	elif operation == 'down':
+		print_message('Execute code for kubernetes down',ctx)
+	elif operation == 'createpod':
+		print_message('Execute code for kubernetes createpod',ctx)
+	elif operation == 'destroy':
+		print_message('Execute code for kubernetes destroy',ctx)
 
 # assumes the org (and service) and vdc been previously selected
 @cli.command()
@@ -1072,6 +1149,8 @@ def vm(ctx, operation, vdc, vapp):
                                             _url):
                                         ips.append(c.anyAttributes_.get(
                                             _url))
+                                   			global vm_ip_iot
+                                        vm_ip_iot = ips         
                             elif (item.HostResource and item.ResourceSubType and
                                   item.ResourceSubType.valueOf_ == 'vmware.cdrom.iso'):
                                 if len(item.HostResource[0].valueOf_) > 0:
@@ -2601,6 +2680,8 @@ def print_gateways(ctx, gateways):
             interface_table.append(interface.get_Name())
         public_ips = gateway.get_public_ips()
         public_ips_value = public_ips
+        global public_ip_iot
+	      public_ip_iot = public_ips
         if len(public_ips) > 2:
             public_ips_value = (
                 "%d IPs (list = 'vca gateway -g %s info')"
