@@ -581,7 +581,7 @@ def vdc(ctx, operation, vdc):
 
 def createvm(ctx,this_vapp,this_catalog,this_template,this_network,this_mode,this_name):
 	ctx.invoke(vapp, operation="create", vdc=ctx.obj['vdc'], vapp = this_vapp, catalog = this_catalog, template = this_template, network = this_network, mode = this_mode, vm_name = this_name)
-        ctx.invoke(vapp, operation="power.on", vdc=ctx.obj['vdc'], vapp="ubuntu")
+        ctx.invoke(vapp, operation="power.on", vdc=ctx.obj['vdc'], vapp="Kubernetes")
 
 def undeploy(ctx,vapp):
 	vca = _getVCA_vcloud_session(ctx)
@@ -628,25 +628,30 @@ def setup_cluster(ctx,cust_file,vm_name,vapp):
 @click.pass_context
 @click.argument('operation', default=default_operation, metavar='[up | down | createpod | destroy]', type=click.Choice(['up','down','createpod','destroy']))
 @click.option('-v', '--vdc', default='', metavar='<vdc>', help='Virtual Data Center Name')
-@click.option('-a', '--vapp', 'vapp', default='ubuntu', metavar='<vapp>', help='vApp name')
+@click.option('-a', '--vapp', 'vapp', default='Kubernetes', metavar='<vapp>', help='vApp name')
 @click.option('-c', '--catalog', default='Public Catalog', metavar='<catalog>', help='Catalog name')
 @click.option('-t', '--template', default='Ubuntu Server 12.04 LTS (amd64 20150127)', metavar='<template>', help='Template name')
 @click.option('-n', '--network', default='default-routed-network', metavar='<network>', help='Network name')
 @click.option('-m', '--mode', default='POOL', metavar='[pool, dhcp, manual]', help='Network connection mode', type=click.Choice(['POOL', 'pool', 'DHCP', 'dhcp', 'MANUAL', 'manual']))
-@click.option('-N', '--vm_name', default='ubuntu', metavar='<name>', help='VM name')
-@click.option('-f', '--file', 'cust_file', default='~/vca-cli/files/kube_config.sh', metavar='<customization_file>', help='Guest OS Customization script file', type=click.File('r'))
+@click.option('-N', '--vm_name', default='Kubernetes', metavar='<name>', help='VM name')
+@click.option('-f', '--file', 'cust_file', default='/root/vca-cli/files/kube_config.sh', metavar='<customization_file>', help='Guest OS Customization script file', type=click.File('r'))
 def kubectl(ctx, operation,vdc,vapp,catalog,template,network,mode,vm_name,cust_file):
+    	"""To deploy Kuebrnetes stand-alone Ubuntu machine on vCA"""
 	if operation == 'up':
 		print_message('Execute code for kubernetes up',ctx)
 		createvm(ctx, vapp, catalog, template, network, mode, vm_name)
+		print "Adding Public IP address to Kubernetes VM"
 		ctx.invoke(gateway, operation="add-ip", gateway="gateway")
 		ctx.invoke(gateway, operation="list")
-		ctx.invoke(nat, operation="add", rule_type="SNAT", original_ip=vm_ip_iot[0], translated_ip=public_ip_iot[len(public_ip_iot)-1])
-		ctx.invoke(nat, operation="add", rule_type="DNAT", original_ip=public_ip_iot[len(public_ip_iot)-1], translated_ip=vm_ip_iot[0])
+		ctx.invoke(vm, operation="list", vapp="Kubernetes")
+		print "Adding SNAT rule"
+		ctx.invoke(nat, operation="add", rule_type="SNAT", original_ip=vm_ip_iot[0], translated_ip=public_ip_iot[0])
+		print "Adding DNAT rule"
+		ctx.invoke(nat, operation="add", rule_type="DNAT", original_ip=public_ip_iot[0], translated_ip=vm_ip_iot[0])
 		ctx.invoke(firewall, operation="disable")
 		undeploy(ctx,vapp)
 		setup_cluster(ctx,cust_file,vm_name,vapp)
-		print "The Kubernetes is deployed and can be accessed at",public_ip_iot[len(public_ip_iot)-1]
+		print "The Kubernetes is deployed and can be accessed at",public_ip_iot[0]
 	elif operation == 'down':
 		print_message('Execute code for kubernetes down',ctx)
 	elif operation == 'createpod':
@@ -1149,7 +1154,7 @@ def vm(ctx, operation, vdc, vapp):
                                             _url):
                                         ips.append(c.anyAttributes_.get(
                                             _url))
-                                   			global vm_ip_iot
+                                   	global vm_ip_iot
                                         vm_ip_iot = ips         
                             elif (item.HostResource and item.ResourceSubType and
                                   item.ResourceSubType.valueOf_ == 'vmware.cdrom.iso'):
@@ -2681,7 +2686,7 @@ def print_gateways(ctx, gateways):
         public_ips = gateway.get_public_ips()
         public_ips_value = public_ips
         global public_ip_iot
-	      public_ip_iot = public_ips
+	public_ip_iot = public_ips
         if len(public_ips) > 2:
             public_ips_value = (
                 "%d IPs (list = 'vca gateway -g %s info')"
