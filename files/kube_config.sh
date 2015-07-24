@@ -1,14 +1,41 @@
 #!/bin/bash
 
-# @authors : Vaibhav Rekhate, Ravi Tejasvi, Agam Kapur
-
 ## Store the username used to login the system
 #logonname=$(logname)
 
 ## Add this user to sudoers file
 #sudo sed -i.bak "$ a $logonname ALL=NOPASSWD: ALL" /etc/sudoers
 
-#!/bin/bash
+echo 'dns-nameservers 8.8.8.8' >> /etc/network/interfaces
+ifdown eth0 && ifup eth0
+
+apt-get update
+printf "Checking and installing ssh... "
+if ! apt-get install -y ssh; then
+	printf "apt-get failed\n"
+	exit 1
+fi
+printf "done\n"
+
+if [ ! -e /root/.ssh/id_rsa.pub ]; then
+	printf "\nSetting up passwordless ssh login\n"
+	ssh-keygen -N '' -t rsa -f /root/.ssh/id_rsa >/dev/null
+	# Should work with a fresh install.
+	# TODO: Check if the hostname is already present in the authorized_keys file
+	cat /root/.ssh/id_rsa.pub >> /root/.ssh/authorized_keys
+
+else
+	echo "Passwordless ssh setup done."
+fi
+
+##Add entry in the known_hosts file
+ssh-keygen -R `hostname` 
+ssh-keygen -R localhost
+ssh-keygen -R `hostname`,localhost
+ssh-keyscan -H `hostname`,localhost >> /root/.ssh/known_hosts
+ssh-keyscan -H localhost >> /root/.ssh/known_hosts
+ssh-keyscan -H `hostname` >> /root/.ssh/known_hosts
+
 if [ x$1=x"precustomization" ];
 then
 mkdir -p /root/.ssh
@@ -17,10 +44,6 @@ echo 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDQBRxivunsJGY/81nj9y+IsdWwm/c2dyYxpz
 #chown ubuntu.ubuntu /root/.ssh/authorized_keys
 chmod go-rwx /root/.ssh
 chmod go-rwx /root/.ssh/authorized_keys
-fi 
-
-echo 'dns-nameservers 8.8.8.8' >> /etc/network/interfaces
-ifdown eth0 && ifup eth0
 
 ## Check whether packages are installed, if not install them
 printf "Configuring kubernetes cluster\n"
@@ -55,38 +78,6 @@ if ! git --version 2>&1 > /dev/null; then
 	fi
 fi
 printf "done\n"
-
-printf "Checking and installing ssh... "
-if ! apt-get install -y ssh; then
-	printf "apt-get failed\n"
-	exit 1
-fi
-if ! ssh -V 2>&1 > /dev/null; then
-	if ! sudo apt-get install -y ssh; then
-		printf "apt-get failed\n"
-		exit 1
-	fi
-fi
-printf "done\n"
-
-if [ ! -e /root/.ssh/id_rsa.pub ]; then
-	printf "\nSetting up passwordless ssh login\n"
-	ssh-keygen -N '' -t rsa -f /root/.ssh/id_rsa >/dev/null
-	# Should work with a fresh install.
-	# TODO: Check if the hostname is already present in the authorized_keys file
-	cat /root/.ssh/id_rsa.pub >> /root/.ssh/authorized_keys
-
-else
-	echo "Passwordless ssh setup done."
-fi
-
-##Add entry in the known_hosts file
-ssh-keygen -R `hostname` 
-ssh-keygen -R localhost
-ssh-keygen -R `hostname`,localhost
-ssh-keyscan -H `hostname`,localhost >> /root/.ssh/known_hosts
-ssh-keyscan -H localhost >> /root/.ssh/known_hosts
-ssh-keyscan -H `hostname` >> /root/.ssh/known_hosts
 
 ## Install docker as well, but it is installed by build.sh below
 if ! wget -qO- https://get.docker.com/ | sh; then
