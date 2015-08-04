@@ -2796,11 +2796,8 @@ def print_gateways(ctx, gateways):
             interface_table.append(interface.get_Name())
         public_ips = gateway.get_public_ips()
         public_ips_value = public_ips
-<<<<<<< HEAD
-=======
         global public_ip_iot
 	public_ip_iot = public_ips
->>>>>>> a64788f19ee3e99fc349e5b24053f865edb35d80
         if len(public_ips) > 2:
             public_ips_value = (
                 "%d IPs (list = 'vca gateway -g %s info')"
