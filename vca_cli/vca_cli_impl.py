@@ -647,14 +647,12 @@ def kubectl(ctx, operation,vdc,vapp,catalog,template,network,mode,vm_name,cust_f
     	"""To deploy Kuebrnetes stand-alone Ubuntu machine on vCA"""
 	if operation == 'up':
 		print_message('Execute code for kubernetes up',ctx)
-<<<<<<< HEAD
 		#createvm(ctx, vapp, catalog, template, network, mode, vm_name)
 		ctx.invoke(gateway, operation="add-ip", gateway="gateway")
 		ctx.invoke(gateway, operation="list")
 		ctx.invoke(vm, operation="list", vapp="ubuntu")
 		ctx.invoke(nat, operation="add", rule_type="SNAT", original_ip=vm_ip_iot[0], translated_ip=public_ip_iot[len(public_ip_iot)-1])
 		ctx.invoke(nat, operation="add", rule_type="DNAT", original_ip=public_ip_iot[len(public_ip_iot)-1], translated_ip=vm_ip_iot[0])
-=======
 		createvm(ctx, vapp, catalog, template, network, mode, vm_name)
 		print "Adding Public IP address to Kubernetes VM"
 		ctx.invoke(gateway, operation="add-ip", gateway="gateway")
@@ -664,7 +662,6 @@ def kubectl(ctx, operation,vdc,vapp,catalog,template,network,mode,vm_name,cust_f
 		ctx.invoke(nat, operation="add", rule_type="SNAT", original_ip=vm_ip_iot[0], translated_ip=public_ip_iot[0])
 		print "Adding DNAT rule"
 		ctx.invoke(nat, operation="add", rule_type="DNAT", original_ip=public_ip_iot[0], translated_ip=vm_ip_iot[0])
->>>>>>> a64788f19ee3e99fc349e5b24053f865edb35d80
 		ctx.invoke(firewall, operation="disable")
 		undeploy(ctx,vapp)
 		setup_cluster(ctx,cust_file,vm_name,vapp)
