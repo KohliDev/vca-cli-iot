@@ -116,6 +116,8 @@ vm_ip_iot = []
 
 public_ip_iot = []
 
+checker_status = True
+
 def _load_context(ctx, profile, json_output, xml_output, insecure):
     config = ConfigParser.RawConfigParser()
     config.read(os.path.expanduser('~/.vcarc'))
@@ -389,8 +391,8 @@ def plan(ctx, operation, plan):
 @cli.command()
 @click.pass_context
 @click.argument('operation', default=default_operation,
-                metavar='[list | info]',
-                type=click.Choice(['list', 'info']))
+                metavar='[list | info| get]',
+                type=click.Choice(['list', 'info', 'get']))
 @click.option('-i', '--instance', default='', metavar='<instance>',
               help='Instance Id')
 def instance(ctx, operation, instance):
@@ -421,7 +423,13 @@ def instance(ctx, operation, instance):
                     % (ctx.obj['user'], ctx.obj['profile']),
                     'instances', headers, sorted_table, ctx)
     elif 'info' == operation:
-        print_message("info about instance %s" % instance, ctx)
+        print_message("info about instance %s" % instance, ctx) 
+    elif 'get' == operation:
+	instances = vca.instances
+        plans = vca.get_plans()
+        items = instances if instances else []
+	id = items[0]['id']	
+	print (id)
 
 
 @cli.command()
@@ -639,6 +647,14 @@ def kubectl(ctx, operation,vdc,vapp,catalog,template,network,mode,vm_name,cust_f
     	"""To deploy Kuebrnetes stand-alone Ubuntu machine on vCA"""
 	if operation == 'up':
 		print_message('Execute code for kubernetes up',ctx)
+<<<<<<< HEAD
+		#createvm(ctx, vapp, catalog, template, network, mode, vm_name)
+		ctx.invoke(gateway, operation="add-ip", gateway="gateway")
+		ctx.invoke(gateway, operation="list")
+		ctx.invoke(vm, operation="list", vapp="ubuntu")
+		ctx.invoke(nat, operation="add", rule_type="SNAT", original_ip=vm_ip_iot[0], translated_ip=public_ip_iot[len(public_ip_iot)-1])
+		ctx.invoke(nat, operation="add", rule_type="DNAT", original_ip=public_ip_iot[len(public_ip_iot)-1], translated_ip=vm_ip_iot[0])
+=======
 		createvm(ctx, vapp, catalog, template, network, mode, vm_name)
 		print "Adding Public IP address to Kubernetes VM"
 		ctx.invoke(gateway, operation="add-ip", gateway="gateway")
@@ -648,6 +664,7 @@ def kubectl(ctx, operation,vdc,vapp,catalog,template,network,mode,vm_name,cust_f
 		ctx.invoke(nat, operation="add", rule_type="SNAT", original_ip=vm_ip_iot[0], translated_ip=public_ip_iot[0])
 		print "Adding DNAT rule"
 		ctx.invoke(nat, operation="add", rule_type="DNAT", original_ip=public_ip_iot[0], translated_ip=vm_ip_iot[0])
+>>>>>>> a64788f19ee3e99fc349e5b24053f865edb35d80
 		ctx.invoke(firewall, operation="disable")
 		undeploy(ctx,vapp)
 		setup_cluster(ctx,cust_file,vm_name,vapp)
@@ -932,6 +949,8 @@ def vapp(ctx, operation, vdc, vapp, catalog, template,
                     else:
                         ctx.obj['response'] = the_vapp.response
                         print_error("can't operate with the vApp", ctx)
+			global checker_status
+			checker_status = False
                 _save_property(ctx.obj['profile'], 'vdc', vdc)
             else:
                 ctx.obj['response'] = vca.response
@@ -2317,6 +2336,99 @@ def example(ctx):
     print_table('vca-cli usage examples:', 'examples',
                 headers, table, ctx)
 
+@cli.command()
+@click.pass_context
+@click.argument('operation', metavar='[up | down| list]', nargs=-1)
+def iot(ctx,operation):
+    """To deploy IoT setup on vCloud air"""
+    vca = _getVCA_with_relogin(ctx)
+    iot_vdc = vca.get_vdc('VDC1')
+    iot_vapp = vca.get_vapp(iot_vdc, 'vROPS-IOT')
+    iot_vapp_poweron= False
+    public_ip_1 = None
+    public_ip_2 = None
+    if 'up' in operation:
+	#TO DO: Validate if everything is proper
+	if iot_vapp is not None:
+		print "vROPS_IOT VM is already present"
+		ctx.invoke(vapp, operation="power.on", vdc=ctx.obj['vdc'], vapp="vROPS-IOT")
+		if not checker_status:
+			print "vROPS_IOT VM is already powered on"
+		else:
+			print "vROPS_IOT VM is powered on"
+		global checker_status
+		checker_status= False
+		iot_vapp_poweron= True
+	else:
+		print "vROPS_IOT VM is not present,creating it now"
+        	ctx.invoke(vapp, operation="create", vdc=ctx.obj['vdc'], vapp="vROPS-IOT", catalog="Public Catalog", template="Ubuntu Server 12.04 LTS (amd64 20150127)", network="default-routed-network", mode="POOL", vm_name="vROPS-IOT")
+       		ctx.invoke(vapp, operation="power.on", vdc=ctx.obj['vdc'], vapp="vROPS-IOT")
+		vca = _getVCA_with_relogin(ctx)
+		iot_vdc = vca.get_vdc('VDC1')
+		iot_vapp = vca.get_vapp(iot_vdc, 'vROPS-IOT')
+		vm_info = iot_vapp.get_vms_network_info();
+		priv_ip = vm_info[0][0]["ip"]
+		print priv_ip
+		print checker_status
+        	if checker_status:
+        		#TO DO: Add logic for gateway
+			gateways = vca.get_gateways('VDC1')
+			list_of_ips = []
+			for gate in gateways:
+				list_of_ips.extend(gate.get_public_ips())
+			print "Adding Public IP address to IOT VM"
+			print "Existing public ips : ", list_of_ips
+			ctx.invoke(gateway, operation="add-ip", gateway="gateway")
+			if checker_status:
+                        	ctx.invoke(gateway, operation="add-ip", gateway="gateway")
+				if checker_status:
+					gateways = vca.get_gateways('VDC1')
+					new_list_of_ips = []
+					for gate in gateways:
+						new_list_of_ips.extend(gate.get_public_ips())
+					print "New public ips : ", new_list_of_ips
+					list_of_ips = list(set(new_list_of_ips)-set(list_of_ips))
+					public_ip_1 = list_of_ips[0]
+					public_ip_2 = list_of_ips[1]
+					if checker_status:
+						ctx.invoke(nat, operation="add", rule_type="DNAT", original_ip=public_ip_1, original_port="443", translated_ip=priv_ip, translated_port="60606", protocol="TCP")
+						if checker_status:
+							ctx.invoke(nat, operation="add", rule_type="DNAT", original_ip=public_ip_2, original_port="443", translated_ip=priv_ip, translated_port="443", protocol="TCP")
+							ctx.invoke(firewall, operation="disable")
+	if not checker_status:
+		if iot_vapp is not None and not iot_vapp_poweron:
+			print "Some error has occured"
+			print_message('Execute code for VROPS_IOT VM destroy',ctx)
+			ctx.invoke(vapp, operation="power.off", vdc=ctx.obj['vdc'], vapp="vROPS-IOT")
+			print "Powering off vROPS_IOT vApp"
+			print "Deleting vROPS_IOT_VAPP vApp"
+			ctx.invoke(vapp, operation="delete", vdc=ctx.obj['vdc'], vapp="vROPS-IOT")
+			if public_ip_1 is not None:
+				print "Deleting Public IP 1"
+				ctx.invoke(gateway, operation="del-ip", gateway="gateway",ip=public_ip_1)
+			if public_ip_2 is not None:
+				print "Deleting Public IP 2"
+				ctx.invoke(gateway, operation="del-ip", gateway="gateway",ip=public_ip_2)			
+	else:
+		#TO DO: Print vCOPS instance details
+        	ctx.invoke(vm, operation="list", vapp="vROPS-IOT")
+        	ctx.invoke(gateway, operation="list")
+        	print "IoT setup is up and running"
+        	print "The vRops IoT instance UI can be accessed at",public_ip_2
+        	print  "The webscoket address to connect gateway is",public_ip_1
+    elif 'list' in operation:
+        ctx.invoke(vm, operation="list", vapp="vROPS-IOT")
+	#TO DO: Print vCOPS instance details
+        # ctx.invoke(gateway, operation="list")
+        # print "IoT setup is up and running"
+	# print "The vRops IoT instance UI can be accessed at",public_ip_2
+        # print "The webscoket address to connect gateway is",public_ip_1
+    elif 'down' in operation:
+        ctx.invoke(vapp, operation="power.off", vdc=ctx.obj['vdc'], vapp="vROPS-IOT")
+        print "IoT setup shut down"
+    else:
+        print_message('not implemented', ctx)
+
 
 def _getVCA(ctx):
     if not ctx.obj.get('token'):
@@ -2559,6 +2671,8 @@ def display_progress(task, ctx, headers):
     response = None
     while status != "success":
         if status == "error":
+	    global checker_status
+	    checker_status = False
             error = task.get_Error()
             sys.stdout.write('\r\n')
             sys.stdout.flush()
@@ -2685,8 +2799,11 @@ def print_gateways(ctx, gateways):
             interface_table.append(interface.get_Name())
         public_ips = gateway.get_public_ips()
         public_ips_value = public_ips
+<<<<<<< HEAD
+=======
         global public_ip_iot
 	public_ip_iot = public_ips
+>>>>>>> a64788f19ee3e99fc349e5b24053f865edb35d80
         if len(public_ips) > 2:
             public_ips_value = (
                 "%d IPs (list = 'vca gateway -g %s info')"
